@@ -17,6 +17,8 @@ write a response back
 package funHttpServer;
 
 import java.io.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.net.*;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -194,53 +196,161 @@ class WebServer {
             builder.append("File not found: " + file);
           }
         } else if (request.contains("multiply?")) {
-          // This multiplies two numbers, there is NO error handling, so when
-          // wrong data is given this just crashes
 
-          Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-          // extract path parameters
-          query_pairs = splitQuery(request.replace("multiply?", ""));
+          try {
 
-          // extract required fields from parameters
-          Integer num1 = Integer.parseInt(query_pairs.get("num1"));
-          Integer num2 = Integer.parseInt(query_pairs.get("num2"));
+              // check if query has parameters
+              String query = request.substring(request.indexOf("?") + 1);
+              if (query.isEmpty() || query.equals("multiply?")) {
+                throw new IllegalArgumentException("No parameters provided");
+            }
 
-          // do math
-          Integer result = num1 * num2;
+            Map<String, String> query_pairs = new LinkedHashMap<String, String>();
+            // extract path parameters
+            query_pairs = splitQuery(request.replace("multiply?", ""));
 
-          // Generate response
-          builder.append("HTTP/1.1 200 OK\n");
-          builder.append("Content-Type: text/html; charset=utf-8\n");
-          builder.append("\n");
-          builder.append("Result is: " + result);
+            
+            if (!query_pairs.containsKey("num1") || !query_pairs.containsKey("num2")) {
+              throw new IllegalArgumentException("Missing parameters: num1 and/or num2");
+            }
+            // extract required fields from parameters
+            Integer num1 = Integer.parseInt(query_pairs.get("num1"));
+            Integer num2 = Integer.parseInt(query_pairs.get("num2"));
 
-          // TODO: Include error handling here with a correct error code and
-          // a response that makes sense
+            // do math
+            Integer result = num1 * num2;
+
+            // generate response
+            builder.append("HTTP/1.1 200 OK\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Result is: " + result);
+
+          } catch (NumberFormatException e) {
+
+            // handle invalid input
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: Invalid input. Please provide integers");
+          } catch (Exception e) {
+
+            // handle other exceptions 
+            builder.append("HTTP/1.1 500 Internal Server Error\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error ocurred");
+          }
 
         } else if (request.contains("github?")) {
+
           // pulls the query from the request and runs it with GitHub's REST API
           // check out https://docs.github.com/rest/reference/
-          //
-          // HINT: REST is organized by nesting topics. Figure out the biggest one first,
-          //     then drill down to what you care about
-          // "Owner's repo is named RepoName. Example: find RepoName's contributors" translates to
-          //     "/repos/OWNERNAME/REPONAME/contributors"
 
-          Map<String, String> query_pairs = new LinkedHashMap<String, String>();
-          query_pairs = splitQuery(request.replace("github?", ""));
-          String json = fetchURL("https://api.github.com/" + query_pairs.get("query"));
-          System.out.println(json);
+          try {
 
-          builder.append("HTTP/1.1 200 OK\n");
-          builder.append("Content-Type: text/html; charset=utf-8\n");
-          builder.append("\n");
-          builder.append("Check the todos mentioned in the Java source file");
-          // TODO: Parse the JSON returned by your fetch and create an appropriate
-          // response based on what the assignment document asks for
 
+            Map<String, String> queryPairs = splitQuery(request.replace("github?", ""));
+            String jsonResponse = fetchURL("https://api.github.com/" + queryPairs.get("query"));
+
+            System.out.println("queryurl: " + queryPairs.get("query"));
+
+            
+            JSONArray repos = new JSONArray(jsonResponse);
+            StringBuilder responseContent = new StringBuilder();
+
+            for (int i = 0; i < repos.length(); i++) {
+              JSONObject repo = repos.getJSONObject(i);
+              String fullName = repo.getString("full_name");
+              int id = repo.getInt("id");
+              JSONObject owner = repo.getJSONObject("owner");
+              String login = owner.getString("login");
+
+              responseContent.append("Full Name: ").append(fullName)
+                             .append(", ID: ").append(id)
+                             .append(", Owner Login: ").append(login)
+                             .append("<br>"); 
+            }
+
+            builder.append("HTTP/1.1 200 OK\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append(responseContent.toString());
+          } catch (Exception e) {
+            builder.append("HTTP/1.1 500 Internal Server Error\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error processing request: " + e.getMessage());
+          }
+
+        } else if (request.contains("calculateMortgage?")) {
+          try {
+            Map<String, String> query_pairs = splitQuery(request.replace("calculateMortgage?", ""));
+            double loanAmount = Double.parseDouble(query_pairs.get("loanAmount"));
+            double interestRate = Double.parseDouble(query_pairs.get("interestRate"));
+            int loanTerm = Integer.parseInt(query_pairs.get("loanTerm"));
+
+            if (loanAmount <= 0 || interestRate <= 0 || loanTerm <= 0) {
+                throw new IllegalArgumentException("Loan amount, interest rate, and loan term must be greater than zero");
+            }
+
+            double monthlyPayment = calculateMortgage(loanAmount, interestRate, loanTerm);
+            builder.append("HTTP/1.1 200 OK\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Monthly Mortgage Payment: ").append(String.format("%.2f", monthlyPayment));
+          } catch (NumberFormatException e) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: Invalid number format");
+          } catch (IllegalArgumentException e) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: ").append(e.getMessage());
+          } catch (Exception e) {
+            builder.append("HTTP/1.1 500 Internal Server Error\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error processing the request");
+          }
+        } else if (request.contains("convertUnit?")) {
+          try {
+            Map<String, String> query_pairs = splitQuery(request.replace("convertUnit?", ""));
+            double value = Double.parseDouble(query_pairs.get("value"));
+            String fromUnit = query_pairs.get("fromUnit");
+            String toUnit = query_pairs.get("toUnit");
+
+            if (fromUnit == null || toUnit == null || fromUnit.isEmpty() || toUnit.isEmpty()) {
+                throw new IllegalArgumentException("Both 'fromUnit' and 'toUnit' parameters are required");
+            }
+
+            double convertedValue = unitConversion(value, fromUnit, toUnit);
+
+            builder.append("HTTP/1.1 200 OK\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append(String.format("%.2f %s is equal to %.2f %s", value, fromUnit, convertedValue, toUnit));
+          } catch (NumberFormatException e) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: Invalid numerical value");
+          } catch (IllegalArgumentException e) {
+            builder.append("HTTP/1.1 400 Bad Request\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error: ").append(e.getMessage());
+          } catch (Exception e) {
+            builder.append("HTTP/1.1 500 Internal Server Error\n");
+            builder.append("Content-Type: text/html; charset=utf-8\n");
+            builder.append("\n");
+            builder.append("Error processing the request");
+          }
         } else {
-          // if the request is not recognized at all
 
+          // if the request is not recognized at all
           builder.append("HTTP/1.1 400 Bad Request\n");
           builder.append("Content-Type: text/html; charset=utf-8\n");
           builder.append("\n");
@@ -361,5 +471,35 @@ class WebServer {
       System.out.println("Exception in url request:" + ex.getMessage());
     }
     return sb.toString();
+  }
+
+  public double calculateMortgage(double loanAmount, double interestRate, int loanTerm) {
+    double monthlyInterestRate = interestRate / 100 / 12;
+    int totalNumberOfPayments = loanTerm * 12;
+    return (loanAmount * monthlyInterestRate) / (1 - Math.pow(1 + monthlyInterestRate, -totalNumberOfPayments));
+  }
+  private double unitConversion(double value, String fromUnit, String toUnit) throws IllegalArgumentException {
+    // length conversion
+    if ("km".equals(fromUnit) && "miles".equals(toUnit)) {
+        return value * 0.621371;
+    } else if ("miles".equals(fromUnit) && "km".equals(toUnit)) {
+        return value / 0.621371;
+    }
+
+    // weight conversion
+    if ("kg".equals(fromUnit) && "lbs".equals(toUnit)) {
+        return value * 2.20462;
+    } else if ("lbs".equals(fromUnit) && "kg".equals(toUnit)) {
+        return value / 2.20462;
+    }
+
+    // temperature conversion
+    if ("celsius".equals(fromUnit) && "fahrenheit".equals(toUnit)) {
+        return (value * 9/5) + 32;
+    } else if ("fahrenheit".equals(fromUnit) && "celsius".equals(toUnit)) {
+        return (value - 32) * 5/9;
+    }
+
+    throw new IllegalArgumentException("Unsupported unit conversion from " + fromUnit + " to " + toUnit);
   }
 }
